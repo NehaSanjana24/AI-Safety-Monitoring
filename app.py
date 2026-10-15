@@ -151,6 +151,88 @@ with st.sidebar:
         st.rerun()
 
 
+# ---------------- MODERN SAFEVISION THEME ----------------
+
+st.markdown("""
+<style>
+.stApp {
+    background: linear-gradient(135deg, #07111f 0%, #0b192b 55%, #10243b 100%);
+    color: #edf5ff;
+}
+
+[data-testid="stHeader"] {
+    background: rgba(7, 17, 31, 0.85);
+}
+
+[data-testid="stSidebar"] {
+    background: #091525;
+    border-right: 1px solid #1c3852;
+}
+
+h1, h2, h3 {
+    color: #e8f5ff !important;
+    font-weight: 750 !important;
+}
+
+p, label, .stMarkdown {
+    color: #d1dfef;
+}
+
+[data-testid="stMetric"] {
+    background: linear-gradient(145deg, #10243b, #142d47);
+    border: 1px solid #244966;
+    padding: 18px;
+    border-radius: 16px;
+    box-shadow: 0 5px 18px rgba(0, 0, 0, 0.15);
+}
+
+[data-testid="stMetricLabel"] {
+    color: #a8c3dc !important;
+}
+
+[data-testid="stMetricValue"] {
+    color: #4dd8f5 !important;
+    font-weight: 800;
+}
+
+.stButton > button,
+[data-testid="stDownloadButton"] button {
+    background: linear-gradient(90deg, #087ea4, #2563eb);
+    color: white;
+    border: 1px solid #3186b8;
+    border-radius: 10px;
+    min-height: 42px;
+    font-weight: 650;
+    transition: all 0.2s ease;
+}
+
+.stButton > button:hover,
+[data-testid="stDownloadButton"] button:hover {
+    border-color: #67e8f9;
+    color: white;
+    transform: translateY(-2px);
+}
+
+[data-testid="stDataFrame"] {
+    border: 1px solid #244966;
+    border-radius: 12px;
+}
+
+hr {
+    border-color: #24415a;
+}
+
+div[data-baseweb="select"] > div,
+div[data-baseweb="input"] > div {
+    background-color: #10243b;
+    border-color: #31516c;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+
+
 # ---------------- MODEL ----------------
 
 @st.cache_resource
@@ -216,6 +298,28 @@ def save_report(records, filename="safety_report.csv"):
     )
 
 
+# ---------------- PERSISTENT SCAN HISTORY ----------------
+
+def persist_history(records, source):
+    """Append completed scan results to a local CSV history file."""
+    if not records:
+        return
+
+    history_path = REPORT_DIR / "detection_history.csv"
+
+    history_df = pd.DataFrame(records).copy()
+    history_df.insert(0, "Source", source)
+    history_df.insert(
+        1, "Scan ID", time.strftime("%Y%m%d-%H%M%S")
+    )
+
+    history_df.to_csv(
+        history_path,
+        mode="a",
+        header=not history_path.exists(),
+        index=False,
+    )
+
 # ---------------- HEADER ----------------
 
 st.title("🦺 AI-Powered Visual Safety Monitoring")
@@ -253,19 +357,242 @@ with st.sidebar:
     )
 
 
-# ---------------- NAVIGATION ----------------
+
+# ---------------- INTERACTIVE NAVIGATION ----------------
 
 page = st.radio(
-    "Choose a module",
+    "Navigate your workspace",
     [
+        "Dashboard",
         "Image Analysis",
         "Video Analysis",
         "Live Webcam",
         "CCTV Stream",
-        "Safety Reports"
+        "Safety Reports",
     ],
-    horizontal=True
+    horizontal=True,
+    key="navigation_page",
 )
+
+st.divider()
+
+
+# ---------------- INTERACTIVE DASHBOARD ----------------
+
+if page == "Dashboard":
+
+    st.subheader("📊 Safety Operations Overview")
+    st.write(
+        "Monitor PPE detections and review your latest safety analysis."
+    )
+
+    records = st.session_state.get("last_records", [])
+    model_ready = CUSTOM_MODEL.exists()
+
+    # Model status and scan summary
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        if model_ready:
+            st.success("🟢 Custom PPE detection model is ready")
+        else:
+            st.warning("🟡 Demo model active — PPE results may be unreliable")
+
+    with col2:
+        st.info("Detection confidence: " + f"{confidence:.0%}")
+
+    st.divider()
+
+    if records:
+        df = pd.DataFrame(records)
+
+        total = len(df)
+        violations = int(
+            (df["Potential Violation"] == "Yes").sum()
+        )
+        people = int(
+            (df["Detected Class"].str.lower() == "person").sum()
+        )
+        classes = df["Detected Class"].nunique()
+
+        # Interactive KPI row
+        k1, k2, k3, k4 = st.columns(4)
+
+        k1.metric("🔎 Total detections", total)
+        k2.metric("⚠️ Potential violations", violations)
+        k3.metric("👷 People detected", people)
+        k4.metric("🏷️ Object classes", classes)
+
+        st.divider()
+
+        left, right = st.columns(2)
+
+        with left:
+            st.markdown("### 📈 Detection breakdown")
+            class_counts = (
+                df["Detected Class"]
+                .value_counts()
+                .rename_axis("Object class")
+                .to_frame("Detections")
+            )
+            st.bar_chart(class_counts)
+
+        with right:
+            st.markdown("### 🦺 PPE detection summary")
+
+            labels = df["Detected Class"].str.lower()
+
+            helmet_count = int(
+                labels.isin(["helmet"]).sum()
+            )
+            no_helmet_count = int(
+                labels.isin(["no-helmet", "no_helmet", "no helmet"]).sum()
+            )
+            vest_count = int(
+                labels.isin(["vest"]).sum()
+            )
+            no_vest_count = int(
+                labels.isin(["no-vest", "no_vest", "no vest"]).sum()
+            )
+
+            st.write(f"🟢 Helmet detections: **{helmet_count}**")
+            st.write(f"🔴 No-helmet detections: **{no_helmet_count}**")
+            st.write(f"🟢 Safety vest detections: **{vest_count}**")
+            st.write(f"🔴 No-vest detections: **{no_vest_count}**")
+
+            st.caption(
+                "Counts reflect detected objects, not unique workers. "
+                "Review detections before making safety decisions."
+            )
+
+        st.divider()
+
+        st.markdown("### 🕒 Recent detection activity")
+        st.dataframe(
+            df.tail(10).iloc[::-1],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        csv_data = df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "⬇️ Download latest dashboard report",
+            data=csv_data,
+            file_name="safety_dashboard_report.csv",
+            mime="text/csv",
+        )
+
+    else:
+        st.info(
+            "Your dashboard is ready. Analyze an image, video, "
+            "webcam feed, or CCTV stream to see real detection statistics."
+        )
+
+        st.markdown("### 🚀 Quick actions")
+        a, b, c = st.columns(3)
+
+        with a:
+            if st.button("🖼️ Analyze an image", use_container_width=True):
+                st.session_state["navigation_page"] = "Image Analysis"
+                st.rerun()
+
+        with b:
+            if st.button("🎬 Analyze a video", use_container_width=True):
+                st.session_state["navigation_page"] = "Video Analysis"
+                st.rerun()
+
+        with c:
+            if st.button("📋 View reports", use_container_width=True):
+                st.session_state["navigation_page"] = "Safety Reports"
+                st.rerun()
+# Persistent history from previously completed scans
+    st.divider()
+    st.subheader("📚 Persistent Scan History")
+
+    history_path = REPORT_DIR / "detection_history.csv"
+
+    if history_path.exists():
+        history_df = pd.read_csv(history_path)
+
+        if not history_df.empty:
+            f1, f2, f3 = st.columns(3)
+
+            with f1:
+                source_options = [
+                    "All",
+                    *sorted(history_df["Source"].dropna().unique().tolist())
+                ]
+                selected_source = st.selectbox(
+                    "Filter by source", source_options
+                )
+
+            with f2:
+                class_options = [
+                    "All",
+                    *sorted(
+                        history_df["Detected Class"]
+                        .dropna().astype(str).unique().tolist()
+                    )
+                ]
+                selected_class = st.selectbox(
+                    "Filter by detected class", class_options
+                )
+
+            with f3:
+                selected_violation = st.selectbox(
+                    "Filter by violation",
+                    ["All", "Yes", "No"]
+                )
+
+            filtered = history_df.copy()
+
+            if selected_source != "All":
+                filtered = filtered[
+                    filtered["Source"] == selected_source
+                ]
+
+            if selected_class != "All":
+                filtered = filtered[
+                    filtered["Detected Class"].astype(str)
+                    == selected_class
+                ]
+
+            if selected_violation != "All":
+                filtered = filtered[
+                    filtered["Potential Violation"].astype(str)
+                    == selected_violation
+                ]
+
+            st.metric("Matching history records", len(filtered))
+
+            st.dataframe(
+                filtered.iloc[::-1],
+                use_container_width=True,
+                hide_index=True
+            )
+
+            history_csv = filtered.to_csv(index=False).encode("utf-8")
+
+            st.download_button(
+                "⬇️ Download filtered history",
+                data=history_csv,
+                file_name="filtered_safety_history.csv",
+                mime="text/csv",
+                key="download_filtered_history"
+            )
+
+            if st.button("🗑️ Clear saved history"):
+                history_path.unlink(missing_ok=True)
+                st.success("Saved scan history cleared.")
+                st.rerun()
+        else:
+            st.info("No saved scan history yet.")
+    else:
+        st.info(
+            "No saved scan history yet. Complete an image, video, "
+            "webcam, or CCTV scan to start building your history."
+        )
+
 
 
 # ---------------- IMAGE ANALYSIS ----------------
@@ -310,6 +637,7 @@ if page == "Image Analysis":
             )
 
             st.session_state["last_records"] = records
+            persist_history(records, "Image")
             save_report(records, "image_safety_report.csv")
 
 
@@ -402,6 +730,7 @@ elif page == "Video Analysis":
                 st.video(output_path)
 
             st.session_state["last_records"] = all_records
+            persist_history(all_records, "Video")
             save_report(all_records, "video_safety_report.csv")
 
         finally:
@@ -454,6 +783,7 @@ elif page == "Live Webcam":
         with LIVE_LOCK:
             webcam_records = list(LIVE_LOG)
         save_report(webcam_records, "webcam_safety_report.csv")
+        persist_history(webcam_records, "Webcam")
 
 
 # ---------------- CCTV STREAM ----------------
@@ -524,6 +854,7 @@ elif page == "CCTV Stream":
                     cap.release()
 
                 st.session_state["last_records"] = cctv_records
+                persist_history(cctv_records, "CCTV")
                 save_report(cctv_records, "cctv_safety_report.csv")
 
 
