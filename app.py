@@ -42,6 +42,115 @@ LIVE_LOG = []
 LIVE_LOCK = Lock()
 
 
+# ================= LOGIN & SESSION AUTHENTICATION =================
+import hmac
+import streamlit as st
+
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+# Login screen
+if not st.session_state.authenticated:
+    st.markdown("""
+        <style>
+        .stApp {
+            background: linear-gradient(135deg, #07111f, #10243b, #0b1728);
+        }
+        [data-testid="stHeader"] {
+            background: transparent;
+        }
+        .login-title {
+            color: #f8fafc;
+            text-align: center;
+            font-size: 38px;
+            font-weight: 800;
+        }
+        .login-subtitle {
+            color: #9fb4cc;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+        [data-testid="stForm"] {
+            background: rgba(20, 39, 62, 0.85);
+            padding: 28px;
+            border: 1px solid #294762;
+            border-radius: 18px;
+        }
+        .stButton > button, [data-testid="stFormSubmitButton"] button {
+            background: linear-gradient(90deg, #087ea4, #2563eb);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: 700;
+            min-height: 45px;
+            width: 100%;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    left, center, right = st.columns([1, 1.15, 1])
+
+    with center:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(
+            '<div class="login-title">🛡️ SafeVision AI</div>',
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            '<div class="login-subtitle">'
+            'AI-Powered Workplace Safety Monitoring'
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+        with st.form("login_form"):
+            st.subheader("Welcome back")
+            st.write("Sign in to access your monitoring dashboard.")
+
+            username = st.text_input("Username", placeholder="Enter username")
+            password = st.text_input(
+                "Password",
+                type="password",
+                placeholder="Enter password"
+            )
+            submitted = st.form_submit_button(
+                "Sign in →",
+                use_container_width=True
+            )
+
+            if submitted:
+                try:
+                    valid_username = hmac.compare_digest(
+                        username, str(st.secrets["auth"]["username"])
+                    )
+                    valid_password = hmac.compare_digest(
+                        password, str(st.secrets["auth"]["password"])
+                    )
+                except (KeyError, FileNotFoundError):
+                    st.error(
+                        "Login credentials are not configured. "
+                        "Set them in .streamlit/secrets.toml."
+                    )
+                    st.stop()
+
+                if valid_username and valid_password:
+                    st.session_state.authenticated = True
+                    st.rerun()
+                else:
+                    st.error("Invalid username or password.")
+
+        st.caption("Authorized personnel only")
+
+    st.stop()
+
+# Logout button appears after successful login
+with st.sidebar:
+    st.success("Signed in")
+    if st.button("🚪 Log out", use_container_width=True):
+        st.session_state.authenticated = False
+        st.rerun()
+
+
 # ---------------- MODEL ----------------
 
 @st.cache_resource
