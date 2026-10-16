@@ -47,3 +47,5 @@ Timestamp,Source,Detected Class,Confidence,Alert
 2026-10-16 07:15:38,Live Webcam,no-vest,0.402,Potential PPE violation detected
 2026-10-16 07:15:58,Image Analysis,no-vest,0.7008,Potential PPE violation detected
 2026-10-16 07:15:58,Image Analysis,no-helmet,0.524,Potential PPE violation detected
+2026-10-16 07:42:08,Image Analysis,no-vest,0.7008,Potential PPE violation detected
+2026-10-16 07:42:08,Image Analysis,no-helmet,0.524,Potential PPE violation detected
