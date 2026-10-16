@@ -1105,57 +1105,115 @@ if page == "Dashboard":
             )
 
 
+
 # ---------------- IMAGE ANALYSIS ----------------
 
 if page == "Image Analysis":
-    st.subheader("Upload an image")
+    st.subheader("Image Safety Analysis")
+    st.caption("Upload a workplace image to detect potential PPE violations.")
+
     uploaded = st.file_uploader(
-        "Choose a JPG, JPEG or PNG file",
+        "Choose a JPG, JPEG or PNG image",
         type=["jpg", "jpeg", "png"],
-        key="image_upload"
+        key="image_upload",
     )
 
-    if uploaded:
-        image = Image.open(uploaded).convert("RGB")
-        st.image(image, caption="Original image", width="stretch")
+    if uploaded is not None:
+        try:
+            image = Image.open(uploaded).convert("RGB")
+            image.load()
 
-        if st.button("Analyze Image", type="primary"):
-            model = get_model()
-            frame = cv2.cvtColor(
-                np.array(image), cv2.COLOR_RGB2BGR
-            )
+            # Prevent accidental processing of extremely large images.
+            max_pixels = 20_000_000
 
-            annotated, records = detect_frame(
-                frame, model
-            )
-            new_alerts = register_alerts(records, "Image Analysis")
-
-            for alert in new_alerts:
-                st.warning(
-                    f"⚠️ {alert['Detected Class']} detected "
-                    f"({float(alert['Confidence']):.1%} confidence)"
+            if image.width * image.height > max_pixels:
+                st.error(
+                    "This image is too large to process. "
+                    "Please upload an image with fewer than 20 million pixels."
+                )
+            else:
+                st.image(
+                    image,
+                    caption="Original image",
+                    width="stretch",
                 )
 
-            st.subheader("Detection Results")
-            st.image(
-                cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
-                caption="AI detection output",
-                width="stretch"
-            )
+                if st.button("Analyze Image", type="primary"):
+                    try:
+                        with st.spinner("Loading AI model and analyzing image..."):
+                            model = get_model()
 
-            col1, col2 = st.columns(2)
-            col1.metric("Objects detected", len(records))
-            col2.metric(
-                "Potential violation detections",
-                sum(
-                    r["Potential Violation"] == "Yes"
-                    for r in records
-                )
-            )
+                            frame = cv2.cvtColor(
+                                np.array(image),
+                                cv2.COLOR_RGB2BGR,
+                            )
 
-            st.session_state["last_records"] = records
-            persist_history(records, "Image")
-            save_report(records, "image_safety_report.csv")
+                            annotated, records = detect_frame(
+                                frame,
+                                model,
+                            )
+
+                        new_alerts = register_alerts(
+                            records,
+                            "Image Analysis",
+                        )
+
+                        for alert in new_alerts:
+                            st.warning(
+                                f"Potential violation: "
+                                f"{alert['Detected Class']} "
+                                f"({float(alert['Confidence']):.1%} confidence)"
+                            )
+
+                        st.subheader("Detection Results")
+
+                        st.image(
+                            cv2.cvtColor(
+                                annotated,
+                                cv2.COLOR_BGR2RGB,
+                            ),
+                            caption="AI detection output",
+                            width="stretch",
+                        )
+
+                        col1, col2 = st.columns(2)
+
+                        col1.metric(
+                            "Objects detected",
+                            len(records),
+                        )
+
+                        col2.metric(
+                            "Potential violations",
+                            sum(
+                                record["Potential Violation"] == "Yes"
+                                for record in records
+                            ),
+                        )
+
+                        st.session_state["last_records"] = records
+
+                        persist_history(records, "Image")
+                        save_report(records, "image_safety_report.csv")
+
+                        st.success("Image analysis completed successfully.")
+
+                    except Exception as exc:
+                        st.error(
+                            f"Image analysis failed: "
+                            f"{type(exc).__name__}: {exc}"
+                        )
+                        st.info(
+                            "Check the Streamlit Cloud logs for the full "
+                            "traceback. Do not share passwords or secrets."
+                        )
+
+        except Exception as exc:
+            st.error(
+                f"Could not read this image: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            st.info("Try uploading a valid JPG or PNG image.")
 
 
 # ---------------- VIDEO ANALYSIS ----------------
